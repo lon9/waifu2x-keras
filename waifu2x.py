@@ -39,29 +39,51 @@ class Waifu2x():
 			model.add(LeakyReLU(0.1))
 		return model
 
-	def _loadImage(self, path, is_noise):
+	def _loadImageY(self, path, is_noise):
 		im = Image.open(path).convert('YCbCr')
+
 		if is_noise:
 			im = misc.fromimage(im).astype('float32')
 		else:
 			im = misc.fromimage(im.resize((2*im.size[0], 2*im.size[1]), resample=Image.NEAREST)).astype('float32')
+
 		x = np.reshape(np.array(im[:,:,0]), (1, 1, im.shape[0], im.shape[1])) / 255.0
+
+		return im, x
+
+	def _loadImageRGB(self, path, is_noise):
+		im = Image.open(path)
+
+		if is_noise:
+			im = misc.fromimage(im).astype('float32')
+		else:
+			im = misc.fromimage(im.resize((2*im.size[0], 2*im.size[1]), resample=Image.NEAREST)).astype('float32')
+
+		x = np.array([[im[:,:,0], im[:,:,1], im[:,:,2]]])/255.0
+
 		return im, x
 		
 	def generate(self, img_path, output, param_id=0, is_noise=False):
+		input_channel = self.params[param_id][0]['nInputPlane']
 
+		im = None
+		x = None
 		# Loading image from img_path.
-		im, x = self._loadImage(img_path, is_noise)
+		if input_channel == 1:
+			im, x = self._loadImageY(img_path, is_noise)
+		else:
+			im, x = self._loadImageRGB(img_path, is_noise)
 
 		# Define model from the image.
-		model = self._loadModel((1, im.shape[0], im.shape[1]), param_id)
+		model = self._loadModel((input_channel, im.shape[0], im.shape[1]), param_id)
 
 		# Generate new value.
 		y = model.predict(x)
 
 		# Return value to image.
-		im[:,:,0] = np.clip(y, 0, 1)*255
-
-		# Store image.
-		misc.toimage(im, mode='YCbCr').convert("RGB").save(output)
-
+		if input_channel == 1:
+			im[:,:,0] = np.clip(y, 0, 1)*255
+			misc.toimage(im, mode='YCbCr').convert("RGB").save(output)
+		else:
+			im = np.clip(y, 0, 1)[0]*255
+			misc.toimage(im, mode='RGB').save(output)
